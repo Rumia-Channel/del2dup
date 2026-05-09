@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::Read;
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
@@ -80,6 +80,9 @@ fn main() {
     for (fi, folder) in args.folders.iter().enumerate() {
         let can_folder = folder.canonicalize().unwrap_or_else(|_| folder.clone());
 
+        eprint!("\rScanning \"{}\"...", folder.display());
+        io::stderr().flush().unwrap();
+
         for entry in WalkDir::new(&can_folder)
             .into_iter()
             .filter_map(|e| e.ok())
@@ -113,6 +116,8 @@ fn main() {
             seen_paths.insert(can_path, idx);
         }
     }
+    eprint!("\r\x1b[2K"); // clear line
+    eprintln!("Scanned {} folder(s), found {} file(s).", args.folders.len(), files.len());
 
     let mut size_groups: HashMap<u64, Vec<usize>> = HashMap::new();
     for (i, info) in files.iter().enumerate() {
@@ -121,14 +126,29 @@ fn main() {
     }
 
     let mut hash_groups: HashMap<String, Vec<usize>> = HashMap::new();
-    for indices in size_groups.values() {
-        if indices.len() < 2 {
-            continue;
-        }
-        for &i in indices {
+    let candidates: Vec<usize> = size_groups
+        .values()
+        .filter(|v| v.len() >= 2)
+        .flatten()
+        .copied()
+        .collect();
+    let total_candidates = candidates.len();
+
+    if total_candidates > 0 {
+        eprintln!(
+            "Hashing {} file(s) across {} size group(s)...",
+            total_candidates,
+            size_groups.values().filter(|v| v.len() >= 2).count()
+        );
+        for (done, &i) in candidates.iter().enumerate() {
+            if (done + 1) % 100 == 0 || done + 1 == total_candidates {
+                eprint!("\r  {}/{}", done + 1, total_candidates);
+                io::stderr().flush().unwrap();
+            }
             let hash = sha256_hex(&files[i].path);
             hash_groups.entry(hash).or_default().push(i);
         }
+        eprintln!();
     }
 
     let mut total_deleted = 0u64;
