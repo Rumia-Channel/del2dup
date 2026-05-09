@@ -60,6 +60,29 @@ fn depth_from(base: &Path, target: &Path) -> usize {
         .count()
 }
 
+fn remove_empty_parents(mut dir: PathBuf, roots: &[PathBuf]) -> u64 {
+    let mut removed = 0u64;
+    loop {
+        if roots.iter().any(|r| dir == *r) {
+            break;
+        }
+        let is_empty = fs::read_dir(&dir).map_or(false, |mut e| e.next().is_none());
+        if !is_empty {
+            break;
+        }
+        match fs::remove_dir(&dir) {
+            Ok(()) => {
+                eprintln!("  [RMDIR] {}", dir.display());
+                removed += 1;
+            }
+            Err(_) => break,
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    removed
+}
 fn main() {
     let args = Args::parse();
 
@@ -77,9 +100,11 @@ fn main() {
 
     let mut seen_paths: HashMap<PathBuf, usize> = HashMap::new();
     let mut files: Vec<FileInfo> = Vec::new();
+    let mut can_folders: Vec<PathBuf> = Vec::new();
 
     for (fi, folder) in args.folders.iter().enumerate() {
         let can_folder = folder.canonicalize().unwrap_or_else(|_| folder.clone());
+        can_folders.push(can_folder.clone());
 
         eprint!("\rScanning \"{}\"...", folder.display());
         io::stderr().flush().unwrap();
@@ -154,6 +179,7 @@ fn main() {
 
     let mut total_deleted = 0u64;
     let mut total_kept = 0u64;
+    let mut total_rmdir = 0u64;
 
     for (_, indices) in &hash_groups {
         if indices.len() <= 1 {
@@ -182,6 +208,9 @@ fn main() {
                     Ok(()) => {
                         println!("  [DEL]   {}", path.display());
                         total_deleted += 1;
+                        if let Some(parent) = path.parent() {
+                            total_rmdir += remove_empty_parents(parent.to_path_buf(), &can_folders);
+                        }
                     }
                     Err(e) => eprintln!("  [FAIL]  {} ({})", path.display(), e),
                 }
@@ -195,8 +224,8 @@ fn main() {
     if total_deleted > 0 {
         if args.delete {
             println!(
-                "\nDone. Kept {} files, deleted {} duplicates.",
-                total_kept, total_deleted
+                "\nDone. Kept {} files, deleted {} duplicates, cleaned {} empty dirs.",
+                total_kept, total_deleted, total_rmdir
             );
         } else {
             println!(
