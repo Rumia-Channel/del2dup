@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -161,7 +162,13 @@ fn main() {
 
         let keep_idx = indices
             .iter()
-            .max_by_key(|&&i| (files[i].depth, -(files[i].folder_index as isize)))
+            .max_by_key(|&&i| {
+                (
+                    files[i].depth,
+                    -(files[i].folder_index as isize),
+                    Reverse(files[i].path.display().to_string()),
+                )
+            })
             .unwrap();
 
         println!("Duplicate group ({} files):", indices.len());
