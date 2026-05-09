@@ -16,7 +16,6 @@ struct Args {
     #[arg(
         short = 'e',
         long = "ext",
-        required = true,
         value_name = "EXT",
         help = "File extensions to include (without leading dot)"
     )]
@@ -62,6 +61,12 @@ fn depth_from(base: &Path, target: &Path) -> usize {
 
 fn main() {
     let args = Args::parse();
+
+    if args.folders.is_empty() || args.extensions.is_empty() {
+        let mut cmd = <Args as clap::CommandFactory>::command();
+        cmd.print_help().unwrap();
+        return;
+    }
 
     let exts: Vec<String> = args
         .extensions
